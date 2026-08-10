@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Puviyan On-Call Utility</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Puviyan On-Call Utility</h1>
+        <p>Production data review and correction</p>
+      </div>
+      <div id="projectBadge" class="badge">Checking project...</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel search-panel">
+        <h2>User Search</h2>
+        <form id="searchForm" class="search-row">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="UID, email, phone, name, profile ref"
+            autocomplete="off"
+          />
+          <button type="submit">Search</button>
+        </form>
+        <div id="searchResults" class="results"></div>
+      </section>
+
+      <section class="panel review-panel">
+        <div class="review-header">
+          <div>
+            <h2 id="reviewTitle">Select a user</h2>
+            <p id="reviewSubtitle">Daily mobility, lifetime carbon, and rewards will appear here.</p>
+          </div>
+          <form id="rangeForm" class="range-row">
+            <label>
+              From
+              <input id="fromDate" type="date" />
+            </label>
+            <label>
+              To
+              <input id="toDate" type="date" />
+            </label>
+            <button type="submit">Load</button>
+          </form>
+        </div>
+
+        <nav class="tabs" aria-label="Data sections">
+          <button class="tab active" data-tab="summary">Summary</button>
+          <button class="tab" data-tab="walking">Walking</button>
+          <button class="tab" data-tab="cycling">Cycling</button>
+          <button class="tab" data-tab="lifetime">Carbon & Lifetime</button>
+          <button class="tab" data-tab="rewards">Rewards</button>
+        </nav>
+
+        <div id="message" class="message" hidden></div>
+        <div id="reviewContent" class="content empty-state">
+          Search and select a user to begin.
+        </div>
+      </section>
+    </main>
+
+    <dialog id="editorDialog">
+      <form method="dialog" class="dialog-shell">
+        <div class="dialog-header">
+          <div>
+            <h2 id="editorTitle">Edit Document</h2>
+            <p id="editorPath"></p>
+          </div>
+          <button value="cancel" class="icon-button" aria-label="Close">×</button>
+        </div>
+        <label class="field">
+          Correction reason
+          <input id="correctionReason" placeholder="Required audit reason" />
+        </label>
+        <label class="field">
+          JSON data
+          <textarea id="jsonEditor" spellcheck="false"></textarea>
+        </label>
+        <div class="dialog-actions">
+          <label class="merge-toggle">
+            <input id="mergeToggle" type="checkbox" checked />
+            Merge with existing document
+          </label>
+          <div>
+            <button value="cancel" type="submit">Cancel</button>
+            <button id="saveDocument" value="default" type="button" class="primary">
+              Save Correction
+            </button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

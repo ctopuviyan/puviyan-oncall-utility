@@ -1,0 +1,19 @@
+{
+  "name": "puviyan-oncall-utility",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal on-call utility for Puviyan production Firestore data review and correction.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^8.7.1",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
