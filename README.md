@@ -37,6 +37,10 @@ npm run dev
 
 Open `http://localhost:8787`.
 
+If search does not return users, check `/api/health`. It should show
+`"credentials":"configured"`. After adding or changing `.env`, restart the
+server.
+
 ## Safety Notes
 
 - This app uses Firebase Admin SDK, so do not expose it without authentication.

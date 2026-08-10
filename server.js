@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import {
   FieldValue,
@@ -18,7 +19,9 @@ app.use(express.json({ limit: '1mb' }));
 
 function createFirestore() {
   const projectId = process.env.FIREBASE_PROJECT_ID || undefined;
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountJson =
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 
   if (serviceAccountJson) {
     const serviceAccount = JSON.parse(serviceAccountJson);
@@ -42,6 +45,14 @@ function createFirestore() {
 }
 
 const db = createFirestore();
+const hasExplicitCredentials = Boolean(
+  process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+    process.env.FIREBASE_PROJECT_ID ||
+    process.env.GCLOUD_PROJECT ||
+    process.env.GOOGLE_CLOUD_PROJECT,
+);
 
 function requireAuth(req, res, next) {
   const expectedUser = process.env.ONCALL_USERNAME;
@@ -80,6 +91,14 @@ function requireAuth(req, res, next) {
 
 app.use(requireAuth);
 app.use(express.static(path.join(__dirname, 'public')));
+
+function requireFirestoreConfig(req, res, next) {
+  if (hasExplicitCredentials) return next();
+  return res.status(500).json({
+    error:
+      'Firestore credentials are not configured. Set GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_JSON in .env, then restart the server.',
+  });
+}
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -142,6 +161,12 @@ function sanitizeSearchTerm(value) {
   return String(value || '').trim();
 }
 
+function titleCaseWords(value) {
+  return value
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+}
+
 function userSummary(snapshot) {
   const data = snapshot.data() || {};
   return {
@@ -155,9 +180,32 @@ function userSummary(snapshot) {
   };
 }
 
+function mergeUserPrivate(summary, privateSnapshot) {
+  if (!privateSnapshot?.exists) return summary;
+  const privateData = privateSnapshot.data() || {};
+  return {
+    ...summary,
+    email: summary.email || privateData.email || '',
+    raw: {
+      ...summary.raw,
+      private: toJsonValue(privateData),
+    },
+  };
+}
+
 async function addUserCandidate(map, querySnapshot) {
   for (const doc of querySnapshot.docs) {
-    map.set(doc.id, userSummary(doc));
+    const privateDoc = await db.collection('informationsPrivate').doc(doc.id).get();
+    map.set(doc.id, mergeUserPrivate(userSummary(doc), privateDoc));
+  }
+}
+
+async function addPrivateUserCandidate(map, querySnapshot) {
+  for (const privateDoc of querySnapshot.docs) {
+    const infoDoc = await db.collection('informations').doc(privateDoc.id).get();
+    if (infoDoc.exists) {
+      map.set(infoDoc.id, mergeUserPrivate(userSummary(infoDoc), privateDoc));
+    }
   }
 }
 
@@ -167,22 +215,50 @@ async function findUsers(q) {
 
   const users = new Map();
   const info = db.collection('informations');
+  const privateInfo = db.collection('informationsPrivate');
+  const nameTerms = [...new Set([term, titleCaseWords(term), term.toUpperCase()])];
 
   const direct = await info.doc(term).get();
-  if (direct.exists) users.set(direct.id, userSummary(direct));
+  if (direct.exists) {
+    const privateDoc = await privateInfo.doc(direct.id).get();
+    users.set(direct.id, mergeUserPrivate(userSummary(direct), privateDoc));
+  }
+
+  const directPrivate = await privateInfo.doc(term).get();
+  if (directPrivate.exists) {
+    const infoDoc = await info.doc(directPrivate.id).get();
+    if (infoDoc.exists) {
+      users.set(infoDoc.id, mergeUserPrivate(userSummary(infoDoc), directPrivate));
+    }
+  }
 
   const queries = [
     info.where('uid', '==', term).limit(10).get(),
     info.where('email', '==', term).limit(10).get(),
     info.where('phone', '==', term).limit(10).get(),
     info.where('profileRef', '==', term).limit(10).get(),
-    info.orderBy('name').startAt(term).endAt(`${term}\uf8ff`).limit(10).get(),
+    info.where('shareId', '==', term).limit(10).get(),
+    privateInfo.where('uid', '==', term).limit(10).get(),
+    privateInfo.where('email', '==', term.toLowerCase()).limit(10).get(),
+    privateInfo
+      .orderBy('email')
+      .startAt(term.toLowerCase())
+      .endAt(`${term.toLowerCase()}\uf8ff`)
+      .limit(10)
+      .get(),
+    ...nameTerms.map((nameTerm) =>
+      info.orderBy('name').startAt(nameTerm).endAt(`${nameTerm}\uf8ff`).limit(10).get(),
+    ),
   ];
 
   const results = await Promise.allSettled(queries);
-  for (const result of results) {
+  for (const [index, result] of results.entries()) {
     if (result.status === 'fulfilled') {
-      await addUserCandidate(users, result.value);
+      if (index >= 5 && index <= 7) {
+        await addPrivateUserCandidate(users, result.value);
+      } else {
+        await addUserCandidate(users, result.value);
+      }
     }
   }
 
@@ -319,10 +395,11 @@ app.get('/api/health', (_req, res) => {
       process.env.FIREBASE_PROJECT_ID ||
       (process.env.GOOGLE_APPLICATION_CREDENTIALS ? 'from-key-file' : null) ||
       (process.env.FIREBASE_SERVICE_ACCOUNT_JSON ? 'from-service-account-json' : null),
+    credentials: hasExplicitCredentials ? 'configured' : 'application-default',
   });
 });
 
-app.get('/api/users/search', async (req, res, next) => {
+app.get('/api/users/search', requireFirestoreConfig, async (req, res, next) => {
   try {
     res.json({ users: await findUsers(req.query.q) });
   } catch (error) {
@@ -330,7 +407,7 @@ app.get('/api/users/search', async (req, res, next) => {
   }
 });
 
-app.get('/api/users/:userId/review', async (req, res, next) => {
+app.get('/api/users/:userId/review', requireFirestoreConfig, async (req, res, next) => {
   try {
     const today = dateKey();
     const from = sanitizeSearchTerm(req.query.from) || today;
@@ -341,7 +418,7 @@ app.get('/api/users/:userId/review', async (req, res, next) => {
   }
 });
 
-app.patch('/api/document', async (req, res, next) => {
+app.patch('/api/document', requireFirestoreConfig, async (req, res, next) => {
   try {
     const docPath = assertAllowedCorrectionPath(req.body.path);
     const reason = sanitizeSearchTerm(req.body.reason);
