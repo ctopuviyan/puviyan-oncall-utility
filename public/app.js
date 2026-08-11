@@ -39,6 +39,7 @@ els.toDate.value = todayKey();
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
     ...options,
   });
   const payload = await response.json().catch(() => ({}));
