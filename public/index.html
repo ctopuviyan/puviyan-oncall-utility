@@ -8,16 +8,25 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>Puviyan On-Call Utility</h1>
-        <p>Production data review and correction</p>
+      <div class="brand-lockup">
+        <img src="/puviyan-logo.svg" alt="I am Puviyan" />
+        <div class="title-block">
+          <h1>On-Call Utility</h1>
+          <p>Production data review and correction</p>
+        </div>
       </div>
-      <div id="projectBadge" class="badge">Checking project...</div>
+      <div class="topbar-actions">
+        <span class="status-pill">PROD</span>
+        <div id="projectBadge" class="badge">Checking project...</div>
+      </div>
     </header>
 
     <main class="layout">
       <section class="panel search-panel">
-        <h2>User Search</h2>
+        <div class="panel-heading">
+          <span class="eyebrow">Lookup</span>
+          <h2>User Search</h2>
+        </div>
         <form id="searchForm" class="search-row">
           <input
             id="searchInput"
@@ -33,6 +42,7 @@
       <section class="panel review-panel">
         <div class="review-header">
           <div>
+            <span class="eyebrow">Review Workspace</span>
             <h2 id="reviewTitle">Select a user</h2>
             <p id="reviewSubtitle">Daily mobility, lifetime carbon, and rewards will appear here.</p>
           </div>

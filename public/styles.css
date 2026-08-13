@@ -1,15 +1,19 @@
 :root {
   color-scheme: dark;
-  --bg: #101214;
-  --panel: #171a1d;
-  --panel-2: #1f2428;
-  --line: #30363d;
-  --text: #f5f7f8;
-  --muted: #9aa4ad;
-  --green: #40c057;
-  --blue: #4dabf7;
+  --bg: #0d0f10;
+  --panel: #151819;
+  --panel-2: #1c2223;
+  --panel-3: #101314;
+  --line: #2d3436;
+  --line-strong: #3d4749;
+  --text: #f7fafb;
+  --muted: #9ca8aa;
+  --green: #48c84f;
+  --green-soft: rgba(72, 200, 79, 0.14);
+  --blue: #63def3;
   --red: #ff6b6b;
   --yellow: #ffd43b;
+  --shadow: 0 18px 60px rgb(0 0 0 / 0.28);
 }
 
 * {
@@ -19,7 +23,9 @@
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at top left, rgba(72, 200, 79, 0.08), transparent 34rem),
+    linear-gradient(180deg, #121516 0%, var(--bg) 42%);
   color: var(--text);
 }
 
@@ -34,12 +40,18 @@ button {
   border-radius: 6px;
   color: var(--text);
   background: var(--panel-2);
-  padding: 9px 12px;
+  padding: 9px 13px;
   cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
 button:hover {
   border-color: var(--blue);
+  background: #243033;
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 button:disabled {
@@ -50,7 +62,7 @@ button:disabled {
 button.primary {
   background: var(--green);
   border-color: var(--green);
-  color: #071307;
+  color: #061106;
   font-weight: 700;
 }
 
@@ -60,8 +72,15 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
-  background: #0d0f11;
+  background: #0c0f10;
   padding: 10px 12px;
+  outline: none;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px var(--green-soft);
 }
 
 textarea {
@@ -77,15 +96,45 @@ textarea {
   justify-content: space-between;
   gap: 24px;
   align-items: center;
-  padding: 18px 24px;
+  min-height: 74px;
+  padding: 16px 28px;
   border-bottom: 1px solid var(--line);
-  background: #131619;
+  background: rgba(20, 23, 24, 0.82);
+  backdrop-filter: blur(18px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.topbar h1,
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.brand-lockup img {
+  width: 174px;
+  height: auto;
+  flex: 0 0 auto;
+}
+
+.title-block {
+  border-left: 1px solid var(--line-strong);
+  padding-left: 18px;
+  min-width: 0;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
 .panel h2 {
   margin: 0;
   font-size: 18px;
+  letter-spacing: 0;
 }
 
 .topbar p,
@@ -97,27 +146,64 @@ textarea {
   font-size: 13px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .badge {
   padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+}
+
+.status-pill {
+  border: 1px solid rgba(255, 212, 59, 0.38);
+  border-radius: 999px;
+  background: rgba(255, 212, 59, 0.09);
+  color: var(--yellow);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
 }
 
 .layout {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  min-height: calc(100vh - 75px);
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  min-height: calc(100vh - 74px);
+  padding: 18px;
 }
 
 .panel {
-  padding: 20px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(21, 24, 25, 0.88);
+  box-shadow: var(--shadow);
 }
 
 .search-panel {
-  border-right: 1px solid var(--line);
-  background: var(--panel);
+  align-self: start;
+  position: sticky;
+  top: 92px;
+}
+
+.panel-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.eyebrow {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
 .search-row,
@@ -139,6 +225,8 @@ textarea {
   display: grid;
   gap: 8px;
   margin-top: 18px;
+  max-height: calc(100vh - 230px);
+  overflow: auto;
 }
 
 .user-result,
@@ -146,13 +234,15 @@ textarea {
 .summary-grid .card {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel-2);
+  background: linear-gradient(180deg, #1d2324, #171b1c);
 }
 
 .user-result {
   width: 100%;
   padding: 12px;
   text-align: left;
+  display: grid;
+  gap: 2px;
 }
 
 .user-result strong {
@@ -169,6 +259,7 @@ textarea {
 
 .review-panel {
   min-width: 0;
+  background: rgba(17, 20, 21, 0.74);
 }
 
 .review-header {
@@ -182,13 +273,21 @@ textarea {
   display: flex;
   gap: 8px;
   margin: 20px 0;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 10px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0c0f10;
+  overflow-x: auto;
+}
+
+.tab {
+  white-space: nowrap;
 }
 
 .tab.active {
-  border-color: var(--green);
-  color: var(--green);
+  border-color: rgba(72, 200, 79, 0.58);
+  color: var(--text);
+  background: var(--green-soft);
 }
 
 .message {
@@ -219,7 +318,7 @@ textarea {
 .summary-grid,
 .doc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
 }
 
@@ -246,7 +345,7 @@ textarea {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: #0d0f11;
+  background: #0b0e0f;
   padding: 10px;
   font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 12px;
@@ -261,12 +360,14 @@ textarea {
 }
 
 dialog {
-  width: min(980px, calc(100vw - 32px));
+  width: min(1080px, calc(100vw - 32px));
+  max-height: calc(100vh - 34px);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   padding: 0;
+  box-shadow: var(--shadow);
 }
 
 dialog::backdrop {
@@ -275,6 +376,8 @@ dialog::backdrop {
 
 .dialog-shell {
   padding: 18px;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
 }
 
 .dialog-header,
@@ -346,16 +449,29 @@ dialog::backdrop {
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
+    padding: 12px;
   }
 
   .search-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+    position: static;
   }
 
   .review-header,
   .topbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .brand-lockup {
+    align-items: flex-start;
+  }
+
+  .brand-lockup img {
+    width: 150px;
+  }
+
+  .title-block {
+    border-left: 0;
+    padding-left: 0;
   }
 }
