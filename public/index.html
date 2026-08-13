@@ -77,10 +77,18 @@
           Correction reason
           <input id="correctionReason" placeholder="Required audit reason" />
         </label>
+        <div id="dialogMessage" class="message dialog-message" hidden></div>
         <label class="field">
           JSON data
           <textarea id="jsonEditor" spellcheck="false"></textarea>
         </label>
+        <section id="previewPanel" class="preview-panel" hidden>
+          <div>
+            <h3>Final data to save</h3>
+            <p id="previewSummary"></p>
+          </div>
+          <pre id="previewOutput" class="json-preview"></pre>
+        </section>
         <div class="dialog-actions">
           <label class="merge-toggle">
             <input id="mergeToggle" type="checkbox" checked />
@@ -88,8 +96,11 @@
           </label>
           <div>
             <button value="cancel" type="submit">Cancel</button>
+            <button id="previewDocument" value="default" type="button">
+              Preview Correction
+            </button>
             <button id="saveDocument" value="default" type="button" class="primary">
-              Save Correction
+              Confirm Save
             </button>
           </div>
         </div>

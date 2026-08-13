@@ -13,7 +13,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const port = Number(process.env.PORT || 8787);
-const host = process.env.HOST || '127.0.0.1';
+const host = process.env.HOST || '0.0.0.0';
 
 app.set('etag', false);
 app.use(express.json({ limit: '1mb' }));
@@ -62,6 +62,14 @@ const hasExplicitCredentials = Boolean(
 );
 
 function requireAuth(req, res, next) {
+  if (process.env.CLOUD_RUN_IAM_AUTH === 'true') {
+    req.oncallUser =
+      req.headers['x-goog-authenticated-user-email'] ||
+      req.headers['x-goog-authenticated-user-id'] ||
+      'cloud-run-iam';
+    return next();
+  }
+
   const expectedUser = process.env.ONCALL_USERNAME;
   const expectedPassword = process.env.ONCALL_PASSWORD;
 
@@ -374,6 +382,216 @@ function assertAllowedCorrectionPath(rawPath) {
   return docPath;
 }
 
+function isWalkingDailyPath(docPath) {
+  const parts = docPath.split('/').filter(Boolean);
+  return (
+    parts.length === 4 &&
+    parts[0] === 'informations' &&
+    parts[2] === 'walking'
+  );
+}
+
+function numberOr(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function intOr(value, fallback = 0) {
+  return Math.round(numberOr(value, fallback));
+}
+
+function positiveNumber(value, fallback = 0) {
+  return Math.max(0, numberOr(value, fallback));
+}
+
+function positiveInt(value, fallback = 0) {
+  return Math.max(0, intOr(value, fallback));
+}
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function fieldChanged(submitted, before, key) {
+  if (!hasOwn(submitted, key)) return false;
+  return JSON.stringify(submitted[key]) !== JSON.stringify(before?.[key]);
+}
+
+function sourceIsHealthApp(data) {
+  const source = String(data.source || '').toLowerCase();
+  const healthSource = String(data.healthSource || '').toLowerCase();
+  const effectiveSource = source && source !== 'unset' ? source : healthSource;
+  return ['health_app', 'health_connect', 'apple_health', 'google_fit'].includes(
+    effectiveSource,
+  );
+}
+
+function resolveTotalFromBuckets(data, submitted, before, totalKey, bucketKeys) {
+  const totalChanged = fieldChanged(submitted, before, totalKey);
+  const bucketChanged = bucketKeys.some((key) => fieldChanged(submitted, before, key));
+
+  if (bucketChanged && !totalChanged) {
+    return bucketKeys.reduce((sum, key) => sum + positiveNumber(data[key]), 0);
+  }
+  if (hasOwn(submitted, totalKey) || hasOwn(data, totalKey)) {
+    return positiveNumber(data[totalKey]);
+  }
+  return bucketKeys.reduce((sum, key) => sum + positiveNumber(data[key]), 0);
+}
+
+function alignSourceBuckets(
+  data,
+  submitted,
+  before,
+  totalKey,
+  healthKey,
+  puviyanKey,
+  sourcePrefersHealth,
+) {
+  const totalChanged = fieldChanged(submitted, before, totalKey);
+  const bucketChanged =
+    fieldChanged(submitted, before, healthKey) ||
+    fieldChanged(submitted, before, puviyanKey);
+
+  if (bucketChanged && !totalChanged) {
+    data[totalKey] = positiveNumber(data[healthKey]) + positiveNumber(data[puviyanKey]);
+    return;
+  }
+
+  const total = positiveNumber(data[totalKey]);
+  if (sourcePrefersHealth) {
+    data[healthKey] = total;
+    data[puviyanKey] = positiveNumber(data[puviyanKey]);
+    if (data[puviyanKey] > 0 && data[puviyanKey] <= total) {
+      data[healthKey] = total - data[puviyanKey];
+    }
+    return;
+  }
+
+  data[puviyanKey] = total;
+  data[healthKey] = positiveNumber(data[healthKey]);
+  if (data[healthKey] > 0 && data[healthKey] <= total) {
+    data[puviyanKey] = total - data[healthKey];
+  }
+}
+
+function recalculateWalkingDocument(baseData, submittedData, beforeData) {
+  const data = { ...baseData };
+  const healthSource = sourceIsHealthApp(data);
+
+  data.distance = resolveTotalFromBuckets(data, submittedData, beforeData, 'distance', [
+    'healthDistance',
+    'puviyanDistance',
+  ]);
+  alignSourceBuckets(
+    data,
+    submittedData,
+    beforeData,
+    'distance',
+    'healthDistance',
+    'puviyanDistance',
+    healthSource,
+  );
+
+  data.steps = positiveInt(
+    resolveTotalFromBuckets(data, submittedData, beforeData, 'steps', [
+      'healthSteps',
+      'puviyanSteps',
+    ]),
+  );
+  alignSourceBuckets(
+    data,
+    submittedData,
+    beforeData,
+    'steps',
+    'healthSteps',
+    'puviyanSteps',
+    healthSource,
+  );
+  data.healthSteps = positiveInt(data.healthSteps);
+  data.puviyanSteps = positiveInt(data.puviyanSteps);
+
+  data.flightsClimbed = positiveInt(
+    resolveTotalFromBuckets(data, submittedData, beforeData, 'flightsClimbed', [
+      'healthFlightsClimbed',
+      'puviyanFlightsClimbed',
+    ]),
+  );
+  alignSourceBuckets(
+    data,
+    submittedData,
+    beforeData,
+    'flightsClimbed',
+    'healthFlightsClimbed',
+    'puviyanFlightsClimbed',
+    healthSource,
+  );
+  data.healthFlightsClimbed = positiveInt(data.healthFlightsClimbed);
+  data.puviyanFlightsClimbed = positiveInt(data.puviyanFlightsClimbed);
+
+  const distanceKm = positiveNumber(data.distance);
+  const floorsClimbed = positiveInt(data.flightsClimbed);
+  const weightedAvgEmissionGPerKm = positiveNumber(data.weightedAvgEmissionGPerKm, 90.4);
+  const electricityCo2ePerKwhG = positiveNumber(data.electricityCo2ePerKwhG, 160);
+  const baselineCostPerKm = positiveNumber(data.baselineCostPerKm, 0.06);
+
+  data.activeCo2 = distanceKm * weightedAvgEmissionGPerKm / 1000.0;
+  data.activeCalories = Math.round(distanceKm * 50.0);
+  data.activePoints = Math.round(distanceKm * 10.0);
+  data.cost = distanceKm * baselineCostPerKm;
+
+  data.climbingCo2 = floorsClimbed * 0.0035 * electricityCo2ePerKwhG / 1000.0;
+  data.climbingCalories = floorsClimbed * 5;
+  data.climbingPoints = floorsClimbed * 5;
+
+  data.co2 = data.activeCo2 + data.climbingCo2;
+  data.calories = data.activeCalories + data.climbingCalories;
+  data.points = data.activePoints + data.climbingPoints;
+
+  return data;
+}
+
+function diffFields(before, after) {
+  const keys = [
+    ...new Set([...Object.keys(before || {}), ...Object.keys(after || {})]),
+  ].sort();
+  return keys
+    .filter((key) => JSON.stringify(before?.[key]) !== JSON.stringify(after?.[key]))
+    .map((key) => ({
+      field: key,
+      before: toJsonValue(before?.[key]),
+      after: toJsonValue(after?.[key]),
+    }));
+}
+
+async function previewCorrection(docPath, incomingData, merge) {
+  const ref = db.doc(docPath);
+  const before = await ref.get();
+  const beforeData = before.exists ? toJsonValue(before.data()) : {};
+  const submittedData = toJsonValue(incomingData);
+  const mergedData = merge ? { ...beforeData, ...submittedData } : submittedData;
+  const warnings = [];
+  let supported = false;
+  let preview = mergedData;
+
+  if (isWalkingDailyPath(docPath)) {
+    supported = true;
+    preview = recalculateWalkingDocument(mergedData, submittedData, beforeData);
+  } else {
+    warnings.push('No automatic recalculation is configured for this document path.');
+  }
+
+  return {
+    supported,
+    path: docPath,
+    before: beforeData,
+    submitted: submittedData,
+    preview,
+    changedFields: diffFields(beforeData, preview),
+    warnings,
+  };
+}
+
 async function writeAuditLog({
   oncallUser,
   docPath,
@@ -425,6 +643,22 @@ app.get('/api/users/:userId/review', requireFirestoreConfig, async (req, res, ne
   }
 });
 
+app.post('/api/document/preview', requireFirestoreConfig, async (req, res, next) => {
+  try {
+    const docPath = assertAllowedCorrectionPath(req.body.path);
+    const merge = req.body.merge !== false;
+    const data = req.body.data;
+
+    if (!isPlainObject(data)) {
+      return res.status(400).json({ error: 'data must be a JSON object' });
+    }
+
+    res.json(await previewCorrection(docPath, data, merge));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.patch('/api/document', requireFirestoreConfig, async (req, res, next) => {
   try {
     const docPath = assertAllowedCorrectionPath(req.body.path);
@@ -441,9 +675,10 @@ app.patch('/api/document', requireFirestoreConfig, async (req, res, next) => {
 
     const ref = db.doc(docPath);
     const before = await ref.get();
+    const preview = await previewCorrection(docPath, data, merge);
     await ref.set(
       {
-        ...data,
+        ...preview.preview,
         oncallCorrectionUpdatedAt: FieldValue.serverTimestamp(),
         oncallCorrectionUpdatedBy: req.oncallUser,
         oncallCorrectionReason: reason,
@@ -462,7 +697,13 @@ app.patch('/api/document', requireFirestoreConfig, async (req, res, next) => {
       requestData: data,
     });
 
-    res.json({ ok: true, document: snapshotToDoc(after) });
+    res.json({
+      ok: true,
+      recalculated: preview.supported,
+      changedFields: preview.changedFields,
+      warnings: preview.warnings,
+      document: snapshotToDoc(after),
+    });
   } catch (error) {
     next(error);
   }

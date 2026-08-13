@@ -42,6 +42,11 @@ button:hover {
   border-color: var(--blue);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 button.primary {
   background: var(--green);
   border-color: var(--green);
@@ -200,6 +205,10 @@ textarea {
   background: #241516;
 }
 
+.dialog-message {
+  margin: 16px 0 0;
+}
+
 .empty-state {
   color: var(--muted);
   border: 1px dashed var(--line);
@@ -305,6 +314,33 @@ dialog::backdrop {
 
 .merge-toggle input {
   width: auto;
+}
+
+.preview-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 8px;
+  background: #111714;
+  padding: 12px;
+}
+
+.preview-panel h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.preview-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.preview-panel .json-preview {
+  max-height: 260px;
+  margin: 0;
 }
 
 @media (max-width: 900px) {

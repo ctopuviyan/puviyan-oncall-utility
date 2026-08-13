@@ -3,6 +3,7 @@ const state = {
   review: null,
   activeTab: 'summary',
   editingPath: null,
+  pendingPreview: null,
 };
 
 const els = {
@@ -21,9 +22,14 @@ const els = {
   editorDialog: document.querySelector('#editorDialog'),
   editorTitle: document.querySelector('#editorTitle'),
   editorPath: document.querySelector('#editorPath'),
+  dialogMessage: document.querySelector('#dialogMessage'),
   jsonEditor: document.querySelector('#jsonEditor'),
   correctionReason: document.querySelector('#correctionReason'),
   mergeToggle: document.querySelector('#mergeToggle'),
+  previewDocument: document.querySelector('#previewDocument'),
+  previewPanel: document.querySelector('#previewPanel'),
+  previewSummary: document.querySelector('#previewSummary'),
+  previewOutput: document.querySelector('#previewOutput'),
   saveDocument: document.querySelector('#saveDocument'),
 };
 
@@ -58,6 +64,17 @@ function showMessage(text, kind = 'info') {
 function clearMessage() {
   els.message.hidden = true;
   els.message.textContent = '';
+}
+
+function showDialogMessage(text, kind = 'error') {
+  els.dialogMessage.textContent = text;
+  els.dialogMessage.className = `message dialog-message ${kind === 'error' ? 'error' : ''}`;
+  els.dialogMessage.hidden = false;
+}
+
+function clearDialogMessage() {
+  els.dialogMessage.hidden = true;
+  els.dialogMessage.textContent = '';
 }
 
 function formatJson(data) {
@@ -242,6 +259,8 @@ function bindEditButtons() {
 
 function openEditor(path, json) {
   state.editingPath = path;
+  resetPreview();
+  clearDialogMessage();
   els.editorTitle.textContent = 'Edit Firestore Document';
   els.editorPath.textContent = path;
   els.jsonEditor.value = json;
@@ -250,17 +269,89 @@ function openEditor(path, json) {
   els.editorDialog.showModal();
 }
 
-async function saveDocument() {
-  clearMessage();
+function parseEditorJson() {
+  try {
+    return JSON.parse(els.jsonEditor.value);
+  } catch (error) {
+    throw new Error(`Invalid JSON: ${error.message}`);
+  }
+}
+
+function resetPreview() {
+  state.pendingPreview = null;
+  if (els.previewPanel) {
+    els.previewPanel.hidden = true;
+    els.previewOutput.textContent = '';
+    els.previewSummary.textContent = '';
+  }
+  if (els.saveDocument) {
+    els.saveDocument.disabled = true;
+  }
+}
+
+function renderPreview(preview) {
+  const changed = preview.changedFields || [];
+  const warningText = preview.warnings?.length ? ` ${preview.warnings.join(' ')}` : '';
+  els.previewSummary.textContent = `${changed.length} field(s) will change.${warningText}`;
+  els.previewOutput.textContent = formatJson(preview.preview);
+  els.previewPanel.hidden = false;
+  els.saveDocument.disabled = false;
+}
+
+async function previewDocument() {
+  clearDialogMessage();
   let data;
   try {
-    data = JSON.parse(els.jsonEditor.value);
+    data = parseEditorJson();
   } catch (error) {
-    showMessage(`Invalid JSON: ${error.message}`, 'error');
+    showDialogMessage(error.message);
     return;
   }
 
   try {
+    els.previewDocument.disabled = true;
+    els.previewDocument.textContent = 'Previewing...';
+    const preview = await api('/api/document/preview', {
+      method: 'POST',
+      body: JSON.stringify({
+        path: state.editingPath,
+        data,
+        merge: els.mergeToggle.checked,
+      }),
+    });
+    state.pendingPreview = preview;
+    renderPreview(preview);
+  } catch (error) {
+    showDialogMessage(error.message);
+  } finally {
+    els.previewDocument.disabled = false;
+    els.previewDocument.textContent = 'Preview Correction';
+  }
+}
+
+async function saveDocument() {
+  clearDialogMessage();
+  let data;
+  try {
+    data = parseEditorJson();
+  } catch (error) {
+    showDialogMessage(error.message);
+    return;
+  }
+
+  if (!state.pendingPreview) {
+    showDialogMessage('Preview the correction before saving.');
+    return;
+  }
+
+  if (!els.correctionReason.value.trim()) {
+    showDialogMessage('Correction reason is required.');
+    return;
+  }
+
+  try {
+    els.saveDocument.disabled = true;
+    els.saveDocument.textContent = 'Saving...';
     await api('/api/document', {
       method: 'PATCH',
       body: JSON.stringify({
@@ -271,10 +362,13 @@ async function saveDocument() {
       }),
     });
     els.editorDialog.close();
-    showMessage('Correction saved and audit log created.');
+    showMessage('Correction saved with recalculated fields and audit log.');
     await loadReview();
   } catch (error) {
-    showMessage(error.message, 'error');
+    showDialogMessage(error.message);
+  } finally {
+    els.saveDocument.disabled = false;
+    els.saveDocument.textContent = 'Confirm Save';
   }
 }
 
@@ -317,7 +411,10 @@ els.tabs.forEach((tab) => {
   });
 });
 
+els.previewDocument.addEventListener('click', previewDocument);
 els.saveDocument.addEventListener('click', saveDocument);
+els.jsonEditor.addEventListener('input', resetPreview);
+els.mergeToggle.addEventListener('change', resetPreview);
 
 api('/api/health')
   .then((health) => {
